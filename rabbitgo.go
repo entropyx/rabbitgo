@@ -63,6 +63,10 @@ func NewConnection(c *Config) (*Connection, error) {
   return conn, nil
 }
 
+func (c *Connection) Publish(exchange, key string, mandatory, immediate bool, msg *amqp.Publishing) error {
+  return c.ch.Publish(exchange, key, mandatory, immediate, *msg)
+}
+
 func (c *Connection) Dial() error {
 	var err error
 	if c.config == nil {
