@@ -12,7 +12,8 @@ type Consumer struct {
   e           *Exchange
   q           *Queue
 	deliveries  <-chan amqp.Delivery
-	handler     func(amqp.Delivery)
+  handler     func(amqp.Delivery)
+	handlerRPC  func(amqp.Delivery)([]byte, string)
   cc          *ConsumerConfig
   bc          *BindingConfig
 	// A notifiyng channel for publishings
@@ -124,6 +125,57 @@ func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
 	// there are problems with reconnection logic for now
 	for delivery := range c.deliveries {
 		handler(delivery)
+	}
+
+	log.Info("handle: deliveries channel closed")
+	c.done <- nil
+	return nil
+}
+
+// ConsumeRPC accepts a handler function for every message streamed from RabbitMq
+// will be called within this handler func.
+// It returns the message to send and the content type.
+func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, string)) error {
+	deliveries, err := c.ch.Consume(
+		c.q.Name,       // name
+		c.cc.Tag,       // consumerTag,
+		c.cc.AutoAck,   // autoAck
+		c.cc.Exclusive, // exclusive
+		c.cc.NoLocal,   // noLocal
+		c.cc.NoWait,    // noWait
+		c.cc.Args,      // arguments
+	)
+	if err != nil {
+		return err
+	}
+
+	// should we stop streaming, in order not to consume from server?
+	c.deliveries = deliveries
+	c.handlerRPC = handler
+
+	log.Info("handle: deliveries channel starting")
+
+	// handle all consumer errors, if required re-connect
+	// there are problems with reconnection logic for now
+	for delivery := range c.deliveries {
+		body, contentType := handler(delivery)
+    replyTo := delivery.ReplyTo
+    if replyTo != "" {
+      err := c.ch.Publish(
+    		"",
+    		replyTo,
+    		false,
+    		false,
+    		amqp.Publishing{
+    			ContentType:   contentType,
+    			CorrelationId: delivery.CorrelationId,
+    			Body:          body,
+    		},
+    	)
+      if err != nil {
+        // TODO: What if err != nil?
+      }
+    }
 	}
 
 	log.Info("handle: deliveries channel closed")
