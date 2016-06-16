@@ -1,7 +1,8 @@
 package rabbitgo
 
 import (
-  "errors"
+  //"errors"
+  "fmt"
   "github.com/streadway/amqp"
   log "github.com/koding/logging"
 )
@@ -43,11 +44,13 @@ func (c *Consumer) Deliveries() <-chan amqp.Delivery {
 // NewConsumer is a constructor for consumer creation
 // Accepts Exchange, Queue, BindingOptions and ConsumerOptions
 func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
-  if c.ch == nil {
-    return nil, errors.New("No channel found. Are you using NewConnection?")
+  ch, err := c.conn.Channel()
+  if err != nil {
+    return nil, err
   }
 	consumer := &Consumer {
-		ch:   c.ch,
+    conn: c,
+    ch:   ch,
 		done: make(chan error),
     cc:   cc,
     bc:   bc,
@@ -62,19 +65,7 @@ func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *C
 
 // connect internally declares the exchanges and queues
 func (c *Consumer) connect() error {
-	err := c.ch.ExchangeDeclare(
-		c.e.Name,       // name of the exchange
-		c.e.Type,       // type
-		c.e.Durable,    // durable
-		c.e.AutoDelete, // delete when complete
-		c.e.Internal,   // internal
-		c.e.NoWait,     // noWait
-		c.e.Args,       // arguments
-	)
-  if err != nil {
-		return err
-	}
-	_, err = c.ch.QueueDeclare(
+	_, err := c.ch.QueueDeclare(
 		c.q.Name,       // name of the queue
 		c.q.Durable,    // durable
 		c.q.AutoDelete, // delete when usused
@@ -85,50 +76,66 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
-	err = c.ch.QueueBind(
-		// bind to real queue
-		c.q.Name,        // name of the queue
-		c.bc.RoutingKey, // bindingKey
-		c.e.Name,        // sourceExchange
-		c.bc.NoWait,     // noWait
-		c.bc.Args,       // arguments
-	)
-  if err != nil {
-		return err
-	}
+  if c.e != nil {
+    err := c.ch.ExchangeDeclare(
+      c.e.Name,       // name of the exchange
+      c.e.Type,       // type
+      c.e.Durable,    // durable
+      c.e.AutoDelete, // delete when complete
+      c.e.Internal,   // internal
+      c.e.NoWait,     // noWait
+      c.e.Args,       // arguments
+    )
+    if err != nil {
+      return err
+    }
+    err = c.ch.QueueBind(
+  		// bind to real queue
+  		c.q.Name,        // name of the queue
+  		c.bc.RoutingKey, // bindingKey
+  		c.e.Name,        // sourceExchange
+  		c.bc.NoWait,     // noWait
+  		c.bc.Args,       // arguments
+  	)
+    if err != nil {
+  		return err
+  	}
+  }
 	return nil
+}
+
+func (c *Consumer) consume() error {
+  deliveries, err := c.ch.Consume(
+    c.q.Name,       // name
+    c.cc.Tag,       // consumerTag,
+    c.cc.AutoAck,   // autoAck
+    c.cc.Exclusive, // exclusive
+    c.cc.NoLocal,   // noLocal
+    c.cc.NoWait,    // noWait
+    c.cc.Args,      // arguments
+  )
+  // should we stop streaming, in order not to consume from server?
+  c.deliveries = deliveries
+  return err
 }
 
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
-	deliveries, err := c.ch.Consume(
-		c.q.Name,       // name
-		c.cc.Tag,       // consumerTag,
-		c.cc.AutoAck,   // autoAck
-		c.cc.Exclusive, // exclusive
-		c.cc.NoLocal,   // noLocal
-		c.cc.NoWait,    // noWait
-		c.cc.Args,      // arguments
-	)
-	if err != nil {
-		return err
-	}
-
-	// should we stop streaming, in order not to consume from server?
-	c.deliveries = deliveries
+	err := c.consume()
+  if err != nil {
+    return err
+  }
 	c.handler = handler
-
 	log.Info("handle: deliveries channel starting")
-
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for delivery := range c.deliveries {
 		handler(delivery)
 	}
-
 	log.Info("handle: deliveries channel closed")
-	c.done <- nil
+  //This was blocking the flow. Not sure how needed is.
+	//c.done <- nil
 	return nil
 }
 
@@ -199,11 +206,34 @@ func (c *Consumer) Get(handler func(delivery amqp.Delivery)) error {
 	}
 	c.handler = handler
 	if ok {
-		log.Debug("Message received")
+		fmt.Println("Message received")
 		handler(message)
 	} else {
-		log.Debug("No message received")
+		fmt.Println("No message received")
 	}
 	// TODO maybe we should return ok too?
+	return nil
+}
+
+func (c *Consumer) Shutdown() error {
+	co := c.cc
+	if err := shutdownChannel(c.ch, co.Tag); err != nil {
+		return err
+	}
+
+	defer fmt.Println("Consumer shutdown OK")
+	fmt.Println("Waiting for Consumer handler to exit")
+
+	// if we have not called the Consume yet, we can return here
+	if c.deliveries == nil {
+		close(c.done)
+	}
+
+  fmt.Printf("deliveries %s", c.deliveries)
+
+	// this channel is here for finishing the consumer's ranges of
+	// delivery chans.  We need every delivery to be processed, here make
+	// sure to wait for all consumers goroutines to finish before exiting our
+	// process.
 	return nil
 }

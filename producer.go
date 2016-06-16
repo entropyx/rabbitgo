@@ -2,22 +2,24 @@ package rabbitgo
 
 import (
   "time"
-  "errors"
+  //"errors"
   "github.com/streadway/amqp"
+  "github.com/entropyx/rabbitgo/utils"
 )
 
 type Producer struct {
-  ch  *amqp.Channel
-  e   *Exchange
-  q   *Queue
-  pc  *ProducerConfig
+  conn  *Connection
+  ch    *amqp.Channel
+  e     *Exchange
+  q     *Queue
+  pc    *ProducerConfig
 }
 
 type ProducerConfig struct {
   // The key that when publishing a message to a exchange/queue will be only delivered to
 	// given routing key listeners
 	RoutingKey string
-	// Publishing tag
+	// Publishing tagpackage
 	Tag string
 	// Queue should be on the server/broker
 	Mandatory bool
@@ -49,14 +51,16 @@ type Publishing struct {
 }
 
 func (c *Connection) NewProducer(e *Exchange, q *Queue, pc *ProducerConfig) (*Producer, error) {
-  if c.ch == nil {
-    return nil, errors.New("No channel found. Are you using NewConnection?")
+  ch, err := c.conn.Channel()
+  if err != nil {
+    return nil, err
   }
   return &Producer{
-    ch: c.ch,
-    e:  e,
-    q:  q,
-    pc: pc,
+    conn:  c,
+    ch:    ch,
+    e:     e,
+    q:     q,
+    pc:    pc,
   }, nil
 }
 
@@ -74,5 +78,70 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 		p.pc.Immediate, // immediate, if no consumer than err
 		*publishing,
 	)
-  return err  
+  return err
+}
+
+// PublishRPC accepts a handler function for every message streamed from RabbitMq
+// as a reply after publishing a message.
+func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery amqp.Delivery)) error {
+  randString := utils.RandomString(35)
+	queue := &Queue{
+    Name: "queue_" + randString,
+		AutoDelete: true,
+    Exclusive: true,
+	}
+	consumerConfig := &ConsumerConfig{
+		Tag: "consumer_" + randString,
+	}
+	consumer, err := p.conn.NewConsumer(nil, queue, nil, consumerConfig)
+	if err != nil {
+		return err
+	}
+	//defer consumer.Shutdown()
+  routingKey := p.pc.RoutingKey
+	// if exchange name is empty, this means we are gonna publish
+	// this mesage to a queue, every queue has a binding to default exchange
+	if p.e.Name == "" {
+		routingKey = p.q.Name
+	}
+  publishing.CorrelationId = randString
+  publishing.ReplyTo = queue.Name
+  err = p.ch.Publish(
+		p.e.Name,       // publish to an exchange(it can be default exchange)
+		routingKey,   // routing to 0 or more queues
+		p.pc.Mandatory, // mandatory, if no queue than err
+		p.pc.Immediate, // immediate, if no consumer than err
+		*publishing,
+	)
+  err = consumer.Consume(func(d amqp.Delivery) {
+    if randString == d.CorrelationId {
+      handler(d)
+      d.Ack(true)
+      consumer.Shutdown()
+    }
+  })
+  return err
+}
+
+func (p *Producer) Shutdown() {
+  p.ch.Close()
+}
+
+// NotifyReturn captures a message when a Publishing is unable to be
+// delivered either due to the `mandatory` flag set
+// and no route found, or `immediate` flag set and no free consumer.
+func (p *Producer) NotifyReturn(notifier func(message amqp.Return)) {
+	go func() {
+		for res := range p.ch.NotifyReturn(make(chan amqp.Return)) {
+			notifier(res)
+		}
+	}()
+}
+
+func (p *Producer) NotifyPublish(confirmer func(message amqp.Confirmation))  {
+  go func() {
+    for res := range p.ch.NotifyPublish(make(chan amqp.Confirmation)) {
+      confirmer(res)
+    }
+  }()
 }

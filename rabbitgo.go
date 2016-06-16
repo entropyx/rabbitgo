@@ -1,6 +1,7 @@
 package rabbitgo
 
 import (
+  "fmt"
   "errors"
   "strings"
   "github.com/streadway/amqp"
@@ -124,4 +125,25 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			}
 		}
 	}()
+}
+
+// shutdownChannel is a general closer function for channels
+func shutdownChannel(channel *amqp.Channel, tag string) error {
+	// This waits for a server acknowledgment which means the sockets will have
+	// flushed all outbound publishings prior to returning.  It's important to
+	// block on Close to not lose any publishings.
+	if err := channel.Cancel(tag, true); err != nil {
+		if amqpError, isAmqpError := err.(*amqp.Error); isAmqpError && amqpError.Code != 504 {
+			return fmt.Errorf("AMQP connection close error: %s", err)
+		}
+	}
+
+	if err := channel.Close(); err != nil {
+    fmt.Printf("err %s", err)
+		return err
+	}
+
+  fmt.Println("shutdown")
+
+	return nil
 }
