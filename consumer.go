@@ -23,12 +23,14 @@ type Consumer struct {
 }
 
 type ConsumerConfig struct {
-	Tag string
-	AutoAck    bool
-	Exclusive  bool
-	NoLocal    bool
-	NoWait     bool
-	Args       amqp.Table
+	Tag            string
+  PrefetchCount  int
+  PrefetchSize   int
+	AutoAck        bool
+	Exclusive      bool
+	NoLocal        bool
+	NoWait         bool
+	Args           amqp.Table
 }
 
 type BindingConfig struct {
@@ -76,6 +78,14 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
+  err = c.ch.Qos(
+    c.cc.PrefetchCount,     // prefetch count
+    c.cc.PrefetchSize,     // prefetch size
+    false,               // global
+  )
+  if err != nil {
+    return err
+  }
   if c.e != nil {
     err := c.ch.ExchangeDeclare(
       c.e.Name,       // name of the exchange
