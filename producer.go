@@ -21,6 +21,8 @@ type ProducerConfig struct {
 	RoutingKey string
 	// Publishing tagpackage
 	Tag string
+  // Maximum waiting time in miliseconds
+  Timeout int
 	// Queue should be on the server/broker
 	Mandatory bool
 	// Consumer should be bound to server
@@ -92,6 +94,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	}
 	consumerConfig := &ConsumerConfig{
 		Tag: "consumer_" + randString,
+    Timeout: p.pc.Timeout,
 	}
 	consumer, err := p.conn.NewConsumer(nil, queue, nil, consumerConfig)
 	if err != nil {

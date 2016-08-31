@@ -2,6 +2,7 @@ package rabbitgo
 
 import (
   //"errors"
+  "time"
   "fmt"
   "github.com/streadway/amqp"
   log "github.com/koding/logging"
@@ -17,6 +18,7 @@ type Consumer struct {
 	handlerRPC  func(amqp.Delivery)([]byte, string)
   cc          *ConsumerConfig
   bc          *BindingConfig
+  closed      bool
 	// A notifiyng channel for publishings
 	// will be used for sync. between close channel and consume handler
 	done        chan error
@@ -26,6 +28,7 @@ type ConsumerConfig struct {
 	Tag            string
   PrefetchCount  int
   PrefetchSize   int
+  Timeout        int
 	AutoAck        bool
 	Exclusive      bool
 	NoLocal        bool
@@ -132,15 +135,24 @@ func (c *Consumer) consume() error {
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
-	err := c.consume()
+  err := c.consume()
   if err != nil {
     return err
   }
+  go func() {
+    if timeout := c.cc.Timeout; timeout > 0 {
+      time.Sleep(time.Duration(timeout) * time.Millisecond)
+      if c.closed == false {
+        c.Shutdown()
+        log.Error("Timeout")
+      }
+    }
+  }()
 	c.handler = handler
 	log.Info("handle: deliveries channel starting")
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
-	for delivery := range c.deliveries {
+  for delivery := range c.deliveries {
 		handler(delivery)
 	}
 	log.Info("handle: deliveries channel closed")
@@ -230,17 +242,14 @@ func (c *Consumer) Shutdown() error {
 	if err := shutdownChannel(c.ch, co.Tag); err != nil {
 		return err
 	}
-
-	defer fmt.Println("Consumer shutdown OK")
 	fmt.Println("Waiting for Consumer handler to exit")
-
 	// if we have not called the Consume yet, we can return here
 	if c.deliveries == nil {
 		close(c.done)
 	}
-
   fmt.Printf("deliveries %s", c.deliveries)
-
+  c.closed = true
+  fmt.Println("Consumer shutdown OK")
 	// this channel is here for finishing the consumer's ranges of
 	// delivery chans.  We need every delivery to be processed, here make
 	// sure to wait for all consumers goroutines to finish before exiting our
