@@ -126,8 +126,11 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
   return err
 }
 
-func (p *Producer) Shutdown() {
-  p.ch.Close()
+func (p *Producer) Shutdown() error {
+  if err := p.ch.Close(); err != nil {
+    return err
+  }
+  return nil
 }
 
 // NotifyReturn captures a message when a Publishing is unable to be
