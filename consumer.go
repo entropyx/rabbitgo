@@ -15,7 +15,7 @@ type Consumer struct {
   q           *Queue
 	deliveries  <-chan amqp.Delivery
   handler     func(amqp.Delivery)
-	handlerRPC  func(amqp.Delivery)([]byte, string)
+	handlerRPC  func(amqp.Delivery)(*amqp.Publishing, error)
   cc          *ConsumerConfig
   bc          *BindingConfig
   closed      bool
@@ -164,7 +164,7 @@ func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
 // ConsumeRPC accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func.
 // It returns the message to send and the content type.
-func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, string)) error {
+func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)(*amqp.Publishing, error)) error {
 	deliveries, err := c.ch.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -187,7 +187,15 @@ func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, strin
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for delivery := range c.deliveries {
-    body, contentType := handler(delivery)
+    var publishing *amqp.Publishing
+    publishing, err := handler(delivery)
+    publishing.CorrelationId = delivery.CorrelationId
+    // TODO: allow to break the handler execution in order to Nack or
+    // Reject the message.
+    if err != nil {
+      log.Error(err.Error())
+      continue
+    }
     replyTo := delivery.ReplyTo
     if replyTo != "" {
       err := c.ch.Publish(
@@ -195,11 +203,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, strin
     		replyTo,
     		false,
     		false,
-    		amqp.Publishing{
-    			ContentType:   contentType,
-    			CorrelationId: delivery.CorrelationId,
-    			Body:          body,
-    		},
+    		*publishing,
     	)
       if err != nil {
         // TODO: What if err != nil?
