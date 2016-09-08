@@ -143,8 +143,8 @@ func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
     if timeout := c.cc.Timeout; timeout > 0 {
       time.Sleep(time.Duration(timeout) * time.Millisecond)
       if c.closed == false {
+        log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
         c.Shutdown()
-        log.Error("Timeout")
       }
     }
   }()
@@ -187,7 +187,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, strin
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for delivery := range c.deliveries {
-		body, contentType := handler(delivery)
+    body, contentType := handler(delivery)
     replyTo := delivery.ReplyTo
     if replyTo != "" {
       err := c.ch.Publish(
