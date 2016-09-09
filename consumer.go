@@ -191,8 +191,8 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)*amqp.Publishing) 
     var publishing *amqp.Publishing
     delivery := &Delivery{&d, c, false, nil}
     publishing = handler(delivery)
-    if delivery.delegated == true {
-      if err = delivery.ackError; err != nil {
+    if delivery.Delegated == true {
+      if err = delivery.AckError; err != nil {
         log.Error("Unable to delegate an acknowledgement: " + err.Error())
       }
       continue

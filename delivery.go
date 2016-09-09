@@ -12,8 +12,8 @@ import (
 type Delivery struct {
   *amqp.Delivery
   consumer *Consumer
-  delegated bool
-  ackError error
+  Delegated bool
+  AckError error
 }
 
 /*
@@ -49,7 +49,7 @@ func (d *Delivery) Delegate(ack string, options ...bool) *amqp.Publishing {
   default:
     panic("unknown acknowledgement")
   }
-  d.delegated = true
-  d.ackError = err
+  d.Delegated = true
+  d.AckError = err
   return nil
 }
