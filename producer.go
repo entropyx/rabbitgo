@@ -16,6 +16,7 @@ type Producer struct {
 }
 
 type ProducerConfig struct {
+  Exchange string
   // The key that when publishing a message to a exchange/queue will be only delivered to
 	// given routing key listeners
 	RoutingKey string
@@ -52,7 +53,7 @@ type Publishing struct {
    Body []byte
 }
 
-func (c *Connection) NewProducer(e *Exchange, q *Queue, pc *ProducerConfig) (*Producer, error) {
+func (c *Connection) NewProducer(pc *ProducerConfig) (*Producer, error) {
   ch, err := c.conn.Channel()
   if err != nil {
     return nil, err
@@ -60,24 +61,18 @@ func (c *Connection) NewProducer(e *Exchange, q *Queue, pc *ProducerConfig) (*Pr
   return &Producer{
     conn:  c,
     ch:    ch,
-    e:     e,
-    q:     q,
     pc:    pc,
   }, nil
 }
 
 func (p *Producer) Publish(publishing *amqp.Publishing) error {
-  routingKey := p.pc.RoutingKey
-	// if exchange name is empty, this means we are gonna publish
-	// this mesage to a queue, every queue has a binding to default exchange
-	if p.e.Name == "" {
-		routingKey = p.q.Name
-	}
+  pc := p.pc
+  routingKey := pc.RoutingKey
   err := p.ch.Publish(
-		p.e.Name,       // publish to an exchange(it can be default exchange)
+		pc.Exchange,       // publish to an exchange(it can be default exchange)
 		routingKey,   // routing to 0 or more queues
-		p.pc.Mandatory, // mandatory, if no queue than err
-		p.pc.Immediate, // immediate, if no consumer than err
+		pc.Mandatory, // mandatory, if no queue than err
+		pc.Immediate, // immediate, if no consumer than err
 		*publishing,
 	)
   return err
@@ -100,22 +95,13 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	if err != nil {
 		return err
 	}
-	//defer consumer.Shutdown()
-  routingKey := p.pc.RoutingKey
-	// if exchange name is empty, this means we are gonna publish
-	// this mesage to a queue, every queue has a binding to default exchange
-	if p.e.Name == "" {
-		routingKey = p.q.Name
-	}
+
   publishing.CorrelationId = randString
   publishing.ReplyTo = queue.Name
-  err = p.ch.Publish(
-		p.e.Name,       // publish to an exchange(it can be default exchange)
-		routingKey,   // routing to 0 or more queues
-		p.pc.Mandatory, // mandatory, if no queue than err
-		p.pc.Immediate, // immediate, if no consumer than err
-		*publishing,
-	)
+  err = p.Publish(publishing)
+  if err != nil {
+    return err
+  }
   err = consumer.Consume(func(d *Delivery) {
     if randString == d.CorrelationId {
       handler(d)

@@ -14,6 +14,34 @@ type Delivery struct {
   consumer *Consumer
   Delegated bool
   AckError error
+  Response *response
+  preAckMultiple bool
+}
+
+type response amqp.Publishing
+
+
+// AckOrSkip calls Delivery.Ack if auto ack is not activated.
+func (d *Delivery) AckOrSkip(multiple bool) error {
+  var err error
+  if d.IsAutoAck() == false {
+    err = d.Ack(multiple)
+  }
+  return err
+}
+
+// Data writes some data into the response body
+func (d *Delivery) Data(data []byte, contentType string)  {
+  response := d.getResponse()
+  response.Body = data
+  response.ContentType = contentType
+}
+
+func (d *Delivery) getResponse() *response {
+  if d.Response == nil {
+    d.Response = &response{}
+  }
+  return d.Response
 }
 
 /*
@@ -39,11 +67,28 @@ func (d *Delivery) Delegate(ack string, options ...bool) *amqp.Publishing {
     err = d.Reject(requeue)
   case "ack":
     multiple = options[0]
-    err = d.Reject(requeue)
+    err = d.Ack(multiple)
   default:
     panic("unknown acknowledgement")
   }
   d.Delegated = true
   d.AckError = err
   return nil
+}
+
+func (d *Delivery) IsAutoAck() bool {
+  return d.consumer.cc.AutoAck
+}
+
+func (d *Delivery) PreAck(multiple bool) {
+  d.preAckMultiple = multiple
+}
+
+// RejectOrSkip calls Delivery.Reject if auto ack is not activated.
+func (d *Delivery) RejectOrSkip(requeue bool) error {
+  var err error
+  if d.IsAutoAck() == false {
+    err = d.Reject(requeue)
+  }
+  return err
 }
