@@ -14,8 +14,8 @@ type Consumer struct {
   e           *Exchange
   q           *Queue
 	deliveries  <-chan amqp.Delivery
-  handler     func(amqp.Delivery)
-	handlerRPC  func(amqp.Delivery)([]byte, string)
+  handler     func(*Delivery)
+	handlerRPC  func(*Delivery)*amqp.Publishing
   cc          *ConsumerConfig
   bc          *BindingConfig
   closed      bool
@@ -134,7 +134,7 @@ func (c *Consumer) consume() error {
 
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
-func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
+func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
   err := c.consume()
   if err != nil {
     return err
@@ -152,7 +152,8 @@ func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
 	log.Info("handle: deliveries channel starting")
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
-  for delivery := range c.deliveries {
+  for d := range c.deliveries {
+    delivery := &Delivery{&d, c, false, nil}
 		handler(delivery)
 	}
 	log.Info("handle: deliveries channel closed")
@@ -164,7 +165,7 @@ func (c *Consumer) Consume(handler func(delivery amqp.Delivery)) error {
 // ConsumeRPC accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func.
 // It returns the message to send and the content type.
-func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, string)) error {
+func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)*amqp.Publishing) error {
 	deliveries, err := c.ch.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -186,8 +187,23 @@ func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, strin
 
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
-	for delivery := range c.deliveries {
-    body, contentType := handler(delivery)
+	for d := range c.deliveries {
+    var publishing *amqp.Publishing
+    delivery := &Delivery{&d, c, false, nil}
+    publishing = handler(delivery)
+    if delivery.Delegated == true {
+      if err = delivery.AckError; err != nil {
+        log.Error("Unable to delegate an acknowledgement: " + err.Error())
+      }
+      continue
+    }
+    publishing.CorrelationId = delivery.CorrelationId
+    // TODO: allow to break the handler execution in order to Nack or
+    // Reject the message.
+    if err != nil {
+      log.Error(err.Error())
+      continue
+    }
     replyTo := delivery.ReplyTo
     if replyTo != "" {
       err := c.ch.Publish(
@@ -195,11 +211,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery amqp.Delivery)([]byte, strin
     		replyTo,
     		false,
     		false,
-    		amqp.Publishing{
-    			ContentType:   contentType,
-    			CorrelationId: delivery.CorrelationId,
-    			Body:          body,
-    		},
+    		*publishing,
     	)
       if err != nil {
         // TODO: What if err != nil?
@@ -221,8 +233,9 @@ func (c *Consumer) QOS(messageCount int) error {
 
 // ConsumeMessage accepts a handler function and only consumes one message
 // stream from RabbitMq
-func (c *Consumer) Get(handler func(delivery amqp.Delivery)) error {
-	message, ok, err := c.ch.Get(c.q.Name, c.cc.AutoAck)
+func (c *Consumer) Get(handler func(delivery *Delivery)) error {
+	m, ok, err := c.ch.Get(c.q.Name, c.cc.AutoAck)
+  message := &Delivery{&m, c, false, nil}
 	if err != nil {
 		return err
 	}
