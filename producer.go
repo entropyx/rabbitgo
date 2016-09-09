@@ -85,7 +85,7 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 
 // PublishRPC accepts a handler function for every message streamed from RabbitMq
 // as a reply after publishing a message.
-func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery amqp.Delivery)) error {
+func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery *Delivery)) error {
   randString := utils.RandomString(35)
 	queue := &Queue{
     Name: "queue_" + randString,
@@ -116,7 +116,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		p.pc.Immediate, // immediate, if no consumer than err
 		*publishing,
 	)
-  err = consumer.Consume(func(d amqp.Delivery) {
+  err = consumer.Consume(func(d *Delivery) {
     if randString == d.CorrelationId {
       handler(d)
       d.Ack(true)
