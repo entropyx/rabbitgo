@@ -20,6 +20,10 @@ type Delivery struct {
 Delegate delegates an acknowledgement through the amqp.Acknowledger interface.
 It must be called during a handler execution.
 
+Either ack, reject or nack can be used as the acknowledger.
+
+The order of the options must be exactly the same as it is required in the
+respective amqp.Delivery function.
 */
 func (d *Delivery) Delegate(ack string, options ...bool) *amqp.Publishing {
   var err error
