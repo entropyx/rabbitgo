@@ -15,7 +15,7 @@ type Consumer struct {
   q           *Queue
 	deliveries  <-chan amqp.Delivery
   handler     func(*Delivery)
-	handlerRPC  func(*Delivery)*amqp.Publishing
+	handlerRPC  func(*Delivery)
   cc          *ConsumerConfig
   bc          *BindingConfig
   closed      bool
@@ -153,7 +153,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
   for d := range c.deliveries {
-    delivery := &Delivery{&d, c, false, nil}
+    delivery := &Delivery{&d, c, false, nil, nil, false}
 		handler(delivery)
 	}
 	log.Info("handle: deliveries channel closed")
@@ -165,22 +165,11 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 // ConsumeRPC accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func.
 // It returns the message to send and the content type.
-func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)*amqp.Publishing) error {
-	deliveries, err := c.ch.Consume(
-		c.q.Name,       // name
-		c.cc.Tag,       // consumerTag,
-		c.cc.AutoAck,   // autoAck
-		c.cc.Exclusive, // exclusive
-		c.cc.NoLocal,   // noLocal
-		c.cc.NoWait,    // noWait
-		c.cc.Args,      // arguments
-	)
-	if err != nil {
-		return err
-	}
-
-	// should we stop streaming, in order not to consume from server?
-	c.deliveries = deliveries
+func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
+	err := c.consume()
+  if err != nil {
+    return err
+  }
 	c.handlerRPC = handler
 
 	log.Info("handle: deliveries channel starting")
@@ -188,24 +177,26 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)*amqp.Publishing) 
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for d := range c.deliveries {
-    var publishing *amqp.Publishing
-    delivery := &Delivery{&d, c, false, nil}
-    publishing = handler(delivery)
+    delivery := &Delivery{&d, c, false, nil, nil, false}
+    replyTo := delivery.ReplyTo
+    handler(delivery)
     if delivery.Delegated == true {
       if err = delivery.AckError; err != nil {
         log.Error("Unable to delegate an acknowledgement: " + err.Error())
       }
       continue
     }
-    publishing.CorrelationId = delivery.CorrelationId
-    // TODO: allow to break the handler execution in order to Nack or
-    // Reject the message.
-    if err != nil {
-      log.Error(err.Error())
-      continue
-    }
-    replyTo := delivery.ReplyTo
-    if replyTo != "" {
+    response := delivery.Response
+    if response != nil {
+      if replyTo == "" {
+        log.Error("Response was ready, but received an empty routing key. Delivery was rejected.")
+        delivery.RejectOrSkip(false)
+        continue
+      }
+      publishing := &amqp.Publishing{
+        Body:          response.Body,
+        CorrelationId: delivery.CorrelationId,
+      }
       err := c.ch.Publish(
     		"",
     		replyTo,
@@ -214,9 +205,10 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)*amqp.Publishing) 
     		*publishing,
     	)
       if err != nil {
-        // TODO: What if err != nil?
+        log.Error("Unable to reply back: " + err.Error())
       }
     }
+    delivery.AckOrSkip(delivery.preAckMultiple)
 	}
 
 	log.Info("handle: deliveries channel closed")
@@ -235,7 +227,7 @@ func (c *Consumer) QOS(messageCount int) error {
 // stream from RabbitMq
 func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	m, ok, err := c.ch.Get(c.q.Name, c.cc.AutoAck)
-  message := &Delivery{&m, c, false, nil}
+  message := &Delivery{&m, c, false, nil, nil, false}
 	if err != nil {
 		return err
 	}
