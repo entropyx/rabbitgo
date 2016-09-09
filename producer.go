@@ -21,6 +21,8 @@ type ProducerConfig struct {
 	RoutingKey string
 	// Publishing tagpackage
 	Tag string
+  // Maximum waiting time in miliseconds
+  Timeout int
 	// Queue should be on the server/broker
 	Mandatory bool
 	// Consumer should be bound to server
@@ -83,7 +85,7 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 
 // PublishRPC accepts a handler function for every message streamed from RabbitMq
 // as a reply after publishing a message.
-func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery amqp.Delivery)) error {
+func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery *Delivery)) error {
   randString := utils.RandomString(35)
 	queue := &Queue{
     Name: "queue_" + randString,
@@ -92,6 +94,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	}
 	consumerConfig := &ConsumerConfig{
 		Tag: "consumer_" + randString,
+    Timeout: p.pc.Timeout,
 	}
 	consumer, err := p.conn.NewConsumer(nil, queue, nil, consumerConfig)
 	if err != nil {
@@ -113,7 +116,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		p.pc.Immediate, // immediate, if no consumer than err
 		*publishing,
 	)
-  err = consumer.Consume(func(d amqp.Delivery) {
+  err = consumer.Consume(func(d *Delivery) {
     if randString == d.CorrelationId {
       handler(d)
       d.Ack(true)
@@ -123,8 +126,11 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
   return err
 }
 
-func (p *Producer) Shutdown() {
-  p.ch.Close()
+func (p *Producer) Shutdown() error {
+  if err := p.ch.Close(); err != nil {
+    return err
+  }
+  return nil
 }
 
 // NotifyReturn captures a message when a Publishing is unable to be
