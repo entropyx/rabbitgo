@@ -17,17 +17,17 @@ type Delivery struct {
 }
 
 /*
-  Delegate delegates an acknowledgement through the amqp.Acknowledger interface.
-  It must be called during a handler execution.
+Delegate delegates an acknowledgement through the amqp.Acknowledger interface.
+It must be called during a handler execution.
 
-  Either [ack](https://godoc.org/github.com/streadway/amqp#Delivery.Ack),
-  [reject](https://godoc.org/github.com/streadway/amqp#Delivery.Reject) or
-  [nack](https://godoc.org/github.com/streadway/amqp#Delivery.Nack) can be used
-  as the acknowledger.
+Either [ack](https://godoc.org/github.com/streadway/amqp#Delivery.Ack),
+[reject](https://godoc.org/github.com/streadway/amqp#Delivery.Reject) or
+[nack](https://godoc.org/github.com/streadway/amqp#Delivery.Nack) can be used
+as the acknowledger.
 
-  The order of the options must be exactly the same as it is required in the
-  respective [amqp.Delivery](https://godoc.org/github.com/streadway/amqp#Delivery)
-  function.
+The order of the options must be exactly the same as it is required in the
+respective [amqp.Delivery](https://godoc.org/github.com/streadway/amqp#Delivery)
+function.
 
 */
 
