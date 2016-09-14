@@ -54,10 +54,7 @@ type Publishing struct {
 }
 
 func (c *Connection) NewProducer(pc *ProducerConfig) (*Producer, error) {
-  ch, err := c.conn.Channel()
-  if err != nil {
-    return nil, err
-  }
+  ch := c.ch
   return &Producer{
     conn:  c,
     ch:    ch,
