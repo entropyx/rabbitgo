@@ -81,11 +81,13 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
-  err = c.ch.Qos(
-    c.cc.PrefetchCount,     // prefetch count
-    c.cc.PrefetchSize,     // prefetch size
-    false,               // global
-  )
+  if c.cc.PrefetchCount > 0 || c.cc.PrefetchSize > 0 {
+    err = c.ch.Qos(
+      c.cc.PrefetchCount,     // prefetch count
+      c.cc.PrefetchSize,     // prefetch size
+      false,               // global
+    )
+  }
   if err != nil {
     return err
   }
