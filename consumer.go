@@ -53,6 +53,14 @@ func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *C
   if err != nil {
     return nil, err
   }
+	consumer, err := c.newConsumerFromChannel(e, q, bc, cc, ch)
+  if err != nil {
+    return nil, err
+  }
+	return consumer, nil
+}
+
+func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig, ch *amqp.Channel) (*Consumer, error) {
 	consumer := &Consumer {
     conn: c,
     ch:   ch,

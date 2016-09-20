@@ -54,7 +54,10 @@ type Publishing struct {
 }
 
 func (c *Connection) NewProducer(pc *ProducerConfig) (*Producer, error) {
-  ch := c.ch
+  ch, err := c.conn.Channel()
+  if err != nil {
+    return nil, err
+  }
   return &Producer{
     conn:  c,
     ch:    ch,
@@ -88,11 +91,10 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		Tag: "consumer_" + randString,
     Timeout: p.pc.Timeout,
 	}
-	consumer, err := p.conn.NewConsumer(nil, queue, nil, consumerConfig)
+	consumer, err := p.conn.newConsumerFromChannel(nil, queue, nil, consumerConfig, p.ch)
 	if err != nil {
 		return err
 	}
-
   publishing.CorrelationId = randString
   publishing.ReplyTo = queue.Name
   err = p.Publish(publishing)
