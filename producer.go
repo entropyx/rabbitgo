@@ -24,6 +24,8 @@ type ProducerConfig struct {
 	Tag string
   // Maximum waiting time in miliseconds
   Timeout int
+  // Maximum number of deliveries that will be received
+  MaxDeliveries int
 	// Queue should be on the server/broker
 	Mandatory bool
 	// Consumer should be bound to server
@@ -81,6 +83,10 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 // PublishRPC accepts a handler function for every message streamed from RabbitMq
 // as a reply after publishing a message.
 func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery *Delivery)) error {
+  maxDeliveries := p.pc.MaxDeliveries
+  if maxDeliveries <= 0 {
+    maxDeliveries = 1
+  }
   randString := utils.RandomString(35)
 	queue := &Queue{
     Name: "queue_" + randString,
@@ -90,6 +96,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	consumerConfig := &ConsumerConfig{
 		Tag: "consumer_" + randString,
     Timeout: p.pc.Timeout,
+    MaxDeliveries: maxDeliveries,
 	}
 	consumer, err := p.conn.newConsumerFromChannel(nil, queue, nil, consumerConfig, p.ch)
 	if err != nil {
@@ -105,7 +112,6 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
     if randString == d.CorrelationId {
       handler(d)
       d.Ack(true)
-      consumer.Shutdown()
     }
   })
   return err
