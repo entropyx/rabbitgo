@@ -28,6 +28,7 @@ type ConsumerConfig struct {
 	Tag            string
   PrefetchCount  int
   PrefetchSize   int
+  MaxDeliveries  int
   Timeout        int
 	AutoAck        bool
 	Exclusive      bool
@@ -53,6 +54,14 @@ func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *C
   if err != nil {
     return nil, err
   }
+	consumer, err := c.newConsumerFromChannel(e, q, bc, cc, ch)
+  if err != nil {
+    return nil, err
+  }
+	return consumer, nil
+}
+
+func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig, ch *amqp.Channel) (*Consumer, error) {
 	consumer := &Consumer {
     conn: c,
     ch:   ch,
@@ -137,6 +146,7 @@ func (c *Consumer) consume() error {
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
+  count := 0
   err := c.consume()
   if err != nil {
     return err
@@ -157,6 +167,10 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
   for d := range c.deliveries {
     delivery := &Delivery{&d, c, false, nil, nil, false}
 		handler(delivery)
+    count++
+    if count >= c.cc.MaxDeliveries {
+      c.Shutdown()
+    }
 	}
 	log.Info("handle: deliveries channel closed")
   //This was blocking the flow. Not sure how needed is.
