@@ -3,7 +3,12 @@ package rabbitgo
 import (
   //"fmt"
   "github.com/streadway/amqp"
-  //log "github.com/koding/logging"
+  "github.com/golang/protobuf/proto"
+  log "github.com/koding/logging"
+)
+
+const (
+  protobufContentType = "application/x-protobuf"
 )
 
 // Delivery captures the fields for a previously delivered message resident in a
@@ -35,6 +40,16 @@ func (d *Delivery) Data(data []byte, contentType string)  {
   response := d.getResponse()
   response.Body = data
   response.ContentType = contentType
+}
+
+// Proto takes the protocol buffer and encodes it into bytes, then writes it
+// into the response body through Delivery.Data
+func (d *Delivery) Proto(message interface{})  {
+  out, err := proto.Marshal(message.(proto.Message))
+  if err != nil {
+    log.Error("An error with the proto ocurred:", err)
+  }
+  d.Data(out, protobufContentType)
 }
 
 func (d *Delivery) getResponse() *response {
