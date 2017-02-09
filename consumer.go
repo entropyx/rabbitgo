@@ -153,7 +153,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			time.Sleep(time.Duration(timeout) * time.Millisecond)
 			if c.closed == false {
 				log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
-				c.Shutdown()
+				c.Cancel()
 			}
 		}
 	}()
@@ -273,4 +273,12 @@ func (c *Consumer) Shutdown() error {
 	// sure to wait for all consumers goroutines to finish before exiting our
 	// process.
 	return nil
+}
+
+func (c *Consumer) Cancel() error {
+	err := c.ch.Cancel(c.cc.Tag, c.cc.NoWait)
+	if err != nil {
+		return err
+	}
+	c.closed = true
 }
