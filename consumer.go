@@ -166,7 +166,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			c.Shutdown()
+			//c.Shutdown()
+			c.Cancel()
 		}
 	}
 	log.Info("handle: deliveries channel closed")
@@ -275,10 +276,10 @@ func (c *Consumer) Shutdown() error {
 	return nil
 }
 
-func (c *Consumer) Cancel() error {
+func (c *Consumer) Cancel() {
 	err := c.ch.Cancel(c.cc.Tag, c.cc.NoWait)
 	if err != nil {
-		return err
+		return fmt.Println(err)
 	}
 	c.closed = true
 }
