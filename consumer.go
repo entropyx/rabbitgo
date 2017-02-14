@@ -166,7 +166,6 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			//c.Shutdown()
 			c.Cancel()
 		}
 	}
@@ -279,7 +278,7 @@ func (c *Consumer) Shutdown() error {
 func (c *Consumer) Cancel() {
 	err := c.ch.Cancel(c.cc.Tag, c.cc.NoWait)
 	if err != nil {
-		return fmt.Println(err)
+		fmt.Println(err)
 	}
 	c.closed = true
 }
