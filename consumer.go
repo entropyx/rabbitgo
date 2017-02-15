@@ -153,7 +153,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			time.Sleep(time.Duration(timeout) * time.Millisecond)
 			if c.closed == false {
 				log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
-				c.Cancel()
+				//c.Cancel()
+				c.Shutdown()
 			}
 		}
 	}()
@@ -166,7 +167,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			c.Cancel()
+			//c.Cancel()
+			c.Shutdown()
 		}
 	}
 	log.Info("handle: deliveries channel closed")
