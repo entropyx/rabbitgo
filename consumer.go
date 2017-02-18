@@ -51,17 +51,16 @@ func (c *Consumer) Deliveries() <-chan amqp.Delivery {
 // NewConsumer is a constructor for consumer creation
 // Accepts Exchange, Queue, BindingOptions and ConsumerOptions
 func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
-	consumer, err := c.newConsumerFromChannel(e, q, bc, cc, c.ch)
+	consumer, err := c.newConsumerFromChannel(e, q, bc, cc)
 	if err != nil {
 		return nil, err
 	}
 	return consumer, nil
 }
 
-func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig, ch *amqp.Channel) (*Consumer, error) {
+func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
 	consumer := &Consumer{
 		conn: c,
-		ch:   ch,
 		done: make(chan error),
 		cc:   cc,
 		bc:   bc,
@@ -76,7 +75,8 @@ func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingCo
 
 // connect internally declares the exchanges and queues
 func (c *Consumer) connect() error {
-	_, err := c.ch.QueueDeclare(
+	channel := c.conn.pickChannel()
+	_, err := channel.QueueDeclare(
 		c.q.Name,       // name of the queue
 		c.q.Durable,    // durable
 		c.q.AutoDelete, // delete when usused
@@ -98,7 +98,7 @@ func (c *Consumer) connect() error {
 		return err
 	}
 	if c.e != nil {
-		err := c.ch.ExchangeDeclare(
+		err := channel.ExchangeDeclare(
 			c.e.Name,       // name of the exchange
 			c.e.Type,       // type
 			c.e.Durable,    // durable
@@ -110,7 +110,7 @@ func (c *Consumer) connect() error {
 		if err != nil {
 			return err
 		}
-		err = c.ch.QueueBind(
+		err = channel.QueueBind(
 			// bind to real queue
 			c.q.Name,        // name of the queue
 			c.bc.RoutingKey, // bindingKey
@@ -122,6 +122,7 @@ func (c *Consumer) connect() error {
 			return err
 		}
 	}
+	c.conn.queue.Push(channel)
 	return nil
 }
 
@@ -153,8 +154,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			time.Sleep(time.Duration(timeout) * time.Millisecond)
 			if c.closed == false {
 				log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
-				//c.Cancel()
-				c.Shutdown()
+				c.Cancel()
 			}
 		}
 	}()
@@ -167,8 +167,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			//c.Cancel()
-			c.Shutdown()
+			c.Cancel()
 		}
 	}
 	log.Info("handle: deliveries channel closed")
@@ -257,7 +256,7 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	return nil
 }
 
-func (c *Consumer) Shutdown() error {
+/*func (c *Consumer) Shutdown() error {
 	co := c.cc
 	if err := shutdownChannel(c.ch, co.Tag); err != nil {
 		return err
@@ -275,7 +274,7 @@ func (c *Consumer) Shutdown() error {
 	// sure to wait for all consumers goroutines to finish before exiting our
 	// process.
 	return nil
-}
+}*/
 
 func (c *Consumer) Cancel() {
 	err := c.ch.Cancel(c.cc.Tag, c.cc.NoWait)

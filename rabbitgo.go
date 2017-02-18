@@ -1,25 +1,32 @@
 package rabbitgo
 
 import (
-  "fmt"
-  "errors"
-  "strings"
-  "github.com/streadway/amqp"
-  log "github.com/koding/logging"
+	"errors"
+	"fmt"
+	"runtime"
+	"strings"
+
+	"github.com/hishboy/gocommons/lang"
+	log "github.com/koding/logging"
+	"github.com/streadway/amqp"
 )
 
 type Config struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	Vhost     string
+	Host     string
+	Port     int
+	Username string
+	Password string
+	Vhost    string
 }
 
 type Connection struct {
-  conn    *amqp.Connection
-  ch      *amqp.Channel       //TODO: Should we use the same channel?
-  config  *Config
+	conn   *amqp.Connection
+	ch     *Channel
+	config *Config
+	ready  []bool
+	index  int
+	last   int
+	queue  *lang.Queue
 }
 
 type Exchange struct {
@@ -43,29 +50,37 @@ type Exchange struct {
 }
 
 type Queue struct {
-	Name string
-	Durable bool
+	Name       string
+	Durable    bool
 	AutoDelete bool
-	Exclusive bool
-	NoWait bool
-	Args amqp.Table
+	Exclusive  bool
+	NoWait     bool
+	Args       amqp.Table
 }
 
 func NewConnection(c *Config) (*Connection, error) {
-  conn := &Connection{config: c}
-  if err := conn.Dial(); err != nil {
-    return nil, err
-  }
-  ch, err := conn.conn.Channel()
-  if err != nil {
-    return nil, err
-  }
-  conn.ch = ch
-  return conn, nil
+	conn := &Connection{config: c}
+	if err := conn.Dial(); err != nil {
+		return nil, err
+	}
+	cores := runtime.GOMAXPROCS(runtime.NumCPU())
+	conn.queue = lang.NewQueue()
+
+	for i := 0; i < cores; i++ {
+		ch, err := conn.conn.Channel()
+		if err != nil {
+			return nil, err
+		}
+		conn.queue.Push(ch)
+	}
+	conn.index = 0
+	conn.last = cores - 1
+
+	return conn, nil
 }
 
 func (c *Connection) Publish(exchange, key string, mandatory, immediate bool, msg *amqp.Publishing) error {
-  return c.ch.Publish(exchange, key, mandatory, immediate, *msg)
+	return c.ch.Publish(exchange, key, mandatory, immediate, *msg)
 }
 
 func (c *Connection) Dial() error {
@@ -90,8 +105,8 @@ func (c *Connection) Dial() error {
 }
 
 func (c *Connection) Close() {
-  c.conn.Close()
-  c.ch.Close()
+	c.conn.Close()
+	c.ch.Close()
 }
 
 func (c *Connection) handleErrors(conn *amqp.Connection) {
@@ -138,12 +153,21 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 		}
 	}
 
-	if err := channel.Close(); err != nil {
-    fmt.Printf("err %s", err)
+	if err := channel.Cancel(tag, true); err != nil {
+		fmt.Printf("err %s", err)
 		return err
 	}
 
-  fmt.Println("shutdown")
+	fmt.Println("shutdown")
 
 	return nil
+}
+
+func (c *Connection) pickChannel() *amqp.Channel {
+	if c.queue.Len() == 0 {
+		newChann, _ := c.conn.Channel()
+		return newChann
+	} else {
+		return c.queue.Poll().(*amqp.Channel)
+	}
 }
