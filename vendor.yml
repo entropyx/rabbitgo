@@ -1,0 +1,19 @@
+vendors:
+- path: github.com/golang/protobuf
+  rev: 8ee79997227bf9b34611aee7946ae64735e6fd93
+- path: github.com/gopherjs/gopherjs
+  rev: 2d0acd02933cf349b065398c73490a14f7d9bada
+- path: github.com/jtolds/gls
+  rev: bb0351aa7eb6f322f32667d51375f26a2bca6628
+- path: github.com/koding/logging
+  rev: 8b5a689ed69b1c7cd1e3595276fc2a352d7818e0
+- path: github.com/smartystreets/assertions
+  rev: 26acb9229f421449ac63d014995b282d59261a8b
+- path: github.com/smartystreets/goconvey
+  rev: 3bd662eac601ad6436e64776af2e112069eb2edc
+- path: github.com/streadway/amqp
+  rev: d75c3a341ff43309ad0cb69ac8bdbd1d8772775f
+- path: golang.org/x/net
+  rev: 236b8f043b920452504e263bc21d354427127473
+- path: golang.org/x/sync
+  rev: 450f422ab23cf9881c94e2db30cac0eb1b7cf80c
