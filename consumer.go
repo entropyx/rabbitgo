@@ -11,7 +11,6 @@ import (
 
 type Consumer struct {
 	conn       *Connection
-	ch         *amqp.Channel
 	e          *Exchange
 	q          *Queue
 	deliveries <-chan amqp.Delivery
@@ -51,14 +50,14 @@ func (c *Consumer) Deliveries() <-chan amqp.Delivery {
 // NewConsumer is a constructor for consumer creation
 // Accepts Exchange, Queue, BindingOptions and ConsumerOptions
 func (c *Connection) NewConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
-	consumer, err := c.newConsumerFromChannel(e, q, bc, cc)
+	consumer, err := c.newConsumer(e, q, bc, cc)
 	if err != nil {
 		return nil, err
 	}
 	return consumer, nil
 }
 
-func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
+func (c *Connection) newConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *ConsumerConfig) (*Consumer, error) {
 	consumer := &Consumer{
 		conn: c,
 		done: make(chan error),
@@ -76,6 +75,7 @@ func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingCo
 // connect internally declares the exchanges and queues
 func (c *Consumer) connect() error {
 	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
 	_, err := channel.QueueDeclare(
 		c.q.Name,       // name of the queue
 		c.q.Durable,    // durable
@@ -88,7 +88,7 @@ func (c *Consumer) connect() error {
 		return err
 	}
 	if c.cc.PrefetchCount > 0 || c.cc.PrefetchSize > 0 {
-		err = c.ch.Qos(
+		err = channel.Qos(
 			c.cc.PrefetchCount, // prefetch count
 			c.cc.PrefetchSize,  // prefetch size
 			false,              // global
@@ -122,12 +122,13 @@ func (c *Consumer) connect() error {
 			return err
 		}
 	}
-	c.conn.queue.Push(channel)
 	return nil
 }
 
 func (c *Consumer) consume() error {
-	deliveries, err := c.ch.Consume(
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
+	deliveries, err := channel.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
 		c.cc.AutoAck,   // autoAck
@@ -211,13 +212,15 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				Body:          response.Body,
 				CorrelationId: delivery.CorrelationId,
 			}
-			err := c.ch.Publish(
+			channel := c.conn.pickChannel()
+			err := channel.Publish(
 				"",
 				replyTo,
 				false,
 				false,
 				*publishing,
 			)
+			c.conn.queue.Push(channel)
 			if err != nil {
 				log.Error("Unable to reply back: " + err.Error())
 			}
@@ -234,13 +237,17 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 // consumers before receiving delivery acks.  The intent of Qos is to make sure
 // the network buffers stay full between the server and client.
 func (c *Consumer) QOS(messageCount int) error {
-	return c.ch.Qos(messageCount, 0, false)
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
+	return channel.Qos(messageCount, 0, false)
 }
 
 // ConsumeMessage accepts a handler function and only consumes one message
 // stream from RabbitMq
 func (c *Consumer) Get(handler func(delivery *Delivery)) error {
-	m, ok, err := c.ch.Get(c.q.Name, c.cc.AutoAck)
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
+	m, ok, err := channel.Get(c.q.Name, c.cc.AutoAck)
 	message := &Delivery{&m, c, false, nil, nil, false}
 	if err != nil {
 		return err
@@ -277,7 +284,9 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 }*/
 
 func (c *Consumer) Cancel() {
-	err := c.ch.Cancel(c.cc.Tag, c.cc.NoWait)
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
+	err := channel.Cancel(c.cc.Tag, c.cc.NoWait)
 	if err != nil {
 		fmt.Println(err)
 	}

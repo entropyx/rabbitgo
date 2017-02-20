@@ -9,7 +9,6 @@ import (
 
 type Producer struct {
 	conn *Connection
-	ch   *amqp.Channel
 	e    *Exchange
 	q    *Queue
 	pc   *ProducerConfig
@@ -58,7 +57,6 @@ type Publishing struct {
 func (c *Connection) NewProducer(pc *ProducerConfig) (*Producer, error) {
 	return &Producer{
 		conn: c,
-		ch:   c.ch,
 		pc:   pc,
 	}, nil
 }
@@ -66,7 +64,8 @@ func (c *Connection) NewProducer(pc *ProducerConfig) (*Producer, error) {
 func (p *Producer) Publish(publishing *amqp.Publishing) error {
 	pc := p.pc
 	routingKey := pc.RoutingKey
-	err := p.ch.Publish(
+	channel := p.conn.pickChannel()
+	err := channel.Publish(
 		pc.Exchange,  // publish to an exchange(it can be default exchange)
 		routingKey,   // routing to 0 or more queues
 		pc.Mandatory, // mandatory, if no queue than err
@@ -94,7 +93,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		Timeout:       p.pc.Timeout,
 		MaxDeliveries: maxDeliveries,
 	}
-	consumer, err := p.conn.newConsumerFromChannel(nil, queue, nil, consumerConfig, p.ch)
+	consumer, err := p.conn.newConsumer(nil, queue, nil, consumerConfig)
 	if err != nil {
 		return err
 	}
@@ -113,28 +112,25 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	return err
 }
 
-func (p *Producer) Shutdown() error {
-	if err := p.ch.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 // NotifyReturn captures a message when a Publishing is unable to be
 // delivered either due to the `mandatory` flag set
 // and no route found, or `immediate` flag set and no free consumer.
 func (p *Producer) NotifyReturn(notifier func(message amqp.Return)) {
 	go func() {
-		for res := range p.ch.NotifyReturn(make(chan amqp.Return)) {
+		channel := p.conn.pickChannel()
+		for res := range channel.NotifyReturn(make(chan amqp.Return)) {
 			notifier(res)
 		}
+		p.conn.queue.Push(channel)
 	}()
 }
 
 func (p *Producer) NotifyPublish(confirmer func(message amqp.Confirmation)) {
 	go func() {
-		for res := range p.ch.NotifyPublish(make(chan amqp.Confirmation)) {
+		channel := p.conn.pickChannel()
+		for res := range channel.NotifyPublish(make(chan amqp.Confirmation)) {
 			confirmer(res)
 		}
+		p.conn.queue.Push(channel)
 	}()
 }
