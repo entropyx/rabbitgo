@@ -125,9 +125,7 @@ func (c *Consumer) connect() error {
 	return nil
 }
 
-func (c *Consumer) consume() error {
-	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
+func (c *Consumer) consume(channel *amqp.Channel) error {
 	deliveries, err := channel.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -145,8 +143,10 @@ func (c *Consumer) consume() error {
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
 	count := 0
-	err := c.consume()
+	err := c.consume(channel)
 	if err != nil {
 		return err
 	}
