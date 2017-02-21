@@ -65,6 +65,7 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 	pc := p.pc
 	routingKey := pc.RoutingKey
 	channel := p.conn.pickChannel()
+	defer p.conn.queue.Push(channel)
 	err := channel.Publish(
 		pc.Exchange,  // publish to an exchange(it can be default exchange)
 		routingKey,   // routing to 0 or more queues

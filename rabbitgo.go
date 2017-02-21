@@ -3,7 +3,6 @@ package rabbitgo
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/hishboy/gocommons/lang"
@@ -21,7 +20,7 @@ type Config struct {
 
 type Connection struct {
 	conn   *amqp.Connection
-	ch     *Channel
+	ch     *amqp.Channel
 	config *Config
 	ready  []bool
 	index  int
@@ -63,19 +62,15 @@ func NewConnection(c *Config) (*Connection, error) {
 	if err := conn.Dial(); err != nil {
 		return nil, err
 	}
-	cores := runtime.GOMAXPROCS(runtime.NumCPU())
+
 	conn.queue = lang.NewQueue()
 
-	for i := 0; i < cores; i++ {
-		ch, err := conn.conn.Channel()
-		if err != nil {
-			return nil, err
-		}
-		conn.queue.Push(ch)
+	ch, err := conn.conn.Channel()
+	if err != nil {
+		return nil, err
 	}
 	conn.index = 0
-	conn.last = cores - 1
-
+	conn.ch = ch
 	return conn, nil
 }
 

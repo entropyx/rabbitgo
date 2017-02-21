@@ -3,6 +3,7 @@ package rabbitgo
 import (
 	//"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	log "github.com/koding/logging"
@@ -19,6 +20,7 @@ type Consumer struct {
 	cc         *ConsumerConfig
 	bc         *BindingConfig
 	closed     bool
+	lock       *sync.Mutex
 	// A notifiyng channel for publishings
 	// will be used for sync. between close channel and consume handler
 	done chan error
@@ -125,7 +127,9 @@ func (c *Consumer) connect() error {
 	return nil
 }
 
-func (c *Consumer) consume(channel *amqp.Channel) error {
+func (c *Consumer) consume() error {
+	channel := c.conn.pickChannel()
+	defer c.conn.queue.Push(channel)
 	deliveries, err := channel.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -143,10 +147,8 @@ func (c *Consumer) consume(channel *amqp.Channel) error {
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
-	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
 	count := 0
-	err := c.consume(channel)
+	err := c.consume()
 	if err != nil {
 		return err
 	}
@@ -181,9 +183,9 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 // will be called within this handler func.
 // It returns the message to send and the content type.
 func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
-	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
-	err := c.consume(channel)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	err := c.consume()
 	if err != nil {
 		return err
 	}
@@ -222,6 +224,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				false,
 				*publishing,
 			)
+			fmt.Println("SE PUBLICOOOO!!", c.conn.queue.Len())
 			c.conn.queue.Push(channel)
 			if err != nil {
 				log.Error("Unable to reply back: " + err.Error())
