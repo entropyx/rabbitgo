@@ -63,7 +63,7 @@ type Queue struct {
 func NewConnection(c *Config) (*Connection, error) {
 	conn := &Connection{config: c}
 	if conn.config.MinChannels <= 0 {
-		conn.config.MinChannels = 4000
+		conn.config.MinChannels = 10
 	}
 	conn.queue = lang.NewQueue()
 	if err := conn.Dial(); err != nil {

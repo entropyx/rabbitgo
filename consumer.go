@@ -127,7 +127,7 @@ func (c *Consumer) connect() error {
 	return nil
 }
 
-func (c *Consumer) consume() error {
+func (c *Consumer) consume() (*amqp.Channel, error) {
 	channel := c.conn.pickChannel()
 	defer c.conn.queue.Push(channel)
 	deliveries, err := channel.Consume(
@@ -141,7 +141,7 @@ func (c *Consumer) consume() error {
 	)
 	// should we stop streaming, in order not to consume from server?
 	c.deliveries = deliveries
-	return err
+	return channel, err
 }
 
 // Consume accepts a handler function for every message streamed from RabbitMq
@@ -150,7 +150,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	count := 0
-	err := c.consume()
+	ch, err := c.consume()
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			time.Sleep(time.Duration(timeout) * time.Millisecond)
 			if c.closed == false {
 				log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
-				c.Cancel()
+				c.Cancel(ch)
 			}
 		}
 	}()
@@ -294,10 +294,8 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	return nil
 }*/
 
-func (c *Consumer) Cancel() {
-	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
-	err := channel.Cancel(c.cc.Tag, c.cc.NoWait)
+func (c *Consumer) Cancel(ch *amqp.Channel) {
+	err := ch.Cancel(c.cc.Tag, c.cc.NoWait)
 	if err != nil {
 		fmt.Println(err)
 	}
