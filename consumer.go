@@ -129,7 +129,6 @@ func (c *Consumer) connect() error {
 
 func (c *Consumer) consume() (*amqp.Channel, error) {
 	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
 	deliveries, err := channel.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -172,9 +171,10 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			c.Cancel()
+			c.Cancel(ch)
 		}
 	}
+	c.conn.queue.Push(ch)
 	log.Info("handle: deliveries channel closed")
 	//This was blocking the flow. Not sure how needed is.
 	//c.done <- nil
