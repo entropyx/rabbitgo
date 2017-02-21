@@ -187,7 +187,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	err := c.consume()
+	_, err := c.consume()
 	if err != nil {
 		return err
 	}
