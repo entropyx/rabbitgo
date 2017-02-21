@@ -20,7 +20,7 @@ type Consumer struct {
 	cc         *ConsumerConfig
 	bc         *BindingConfig
 	closed     bool
-	lock       *sync.Mutex
+	lock       sync.Mutex
 	// A notifiyng channel for publishings
 	// will be used for sync. between close channel and consume handler
 	done chan error
@@ -147,6 +147,8 @@ func (c *Consumer) consume() error {
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	count := 0
 	err := c.consume()
 	if err != nil {
@@ -242,16 +244,19 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 // consumers before receiving delivery acks.  The intent of Qos is to make sure
 // the network buffers stay full between the server and client.
 func (c *Consumer) QOS(messageCount int) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
+	c.conn.queue.Push(channel)
 	return channel.Qos(messageCount, 0, false)
 }
 
 // ConsumeMessage accepts a handler function and only consumes one message
 // stream from RabbitMq
 func (c *Consumer) Get(handler func(delivery *Delivery)) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
 	m, ok, err := channel.Get(c.q.Name, c.cc.AutoAck)
 	message := &Delivery{&m, c, false, nil, nil, false}
 	if err != nil {
@@ -264,6 +269,7 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	} else {
 		fmt.Println("No message received")
 	}
+	c.conn.queue.Push(channel)
 	// TODO maybe we should return ok too?
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/hishboy/gocommons/lang"
 	log "github.com/koding/logging"
@@ -11,11 +12,12 @@ import (
 )
 
 type Config struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	Vhost    string
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	Vhost       string
+	MinChannels int
 }
 
 type Connection struct {
@@ -26,6 +28,7 @@ type Connection struct {
 	index  int
 	last   int
 	queue  *lang.Queue
+	lock   sync.Mutex
 }
 
 type Exchange struct {
@@ -59,11 +62,13 @@ type Queue struct {
 
 func NewConnection(c *Config) (*Connection, error) {
 	conn := &Connection{config: c}
+	if conn.config.MinChannels <= 0 {
+		conn.config.MinChannels = 4000
+	}
+	conn.queue = lang.NewQueue()
 	if err := conn.Dial(); err != nil {
 		return nil, err
 	}
-
-	conn.queue = lang.NewQueue()
 
 	ch, err := conn.conn.Channel()
 	if err != nil {
@@ -96,12 +101,19 @@ func (c *Connection) Dial() error {
 		return err
 	}
 	c.handleErrors(c.conn)
+	for i := 0; i < c.config.MinChannels; i++ {
+		go func() {
+			ch, _ := c.conn.Channel()
+			c.queue.Push(ch)
+		}()
+	}
 	return nil
 }
 
 func (c *Connection) Close() {
 	c.conn.Close()
 	c.ch.Close()
+	fmt.Println("CONEXION WAS CLOSED")
 }
 
 func (c *Connection) handleErrors(conn *amqp.Connection) {
@@ -126,6 +138,14 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			}
 		}
 	}()
+
+	go func() {
+		channel := c.pickChannel()
+		for e := range channel.NotifyClose(make(chan *amqp.Error)) {
+			fmt.Println(e)
+		}
+	}()
+
 	go func() {
 		for b := range conn.NotifyBlocked(make(chan amqp.Blocking)) {
 			if b.Active {
@@ -160,7 +180,9 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 
 func (c *Connection) pickChannel() *amqp.Channel {
 	if c.queue.Len() == 0 {
+		c.lock.Lock()
 		newChann, _ := c.conn.Channel()
+		c.lock.Unlock()
 		return newChann
 	} else {
 		return c.queue.Poll().(*amqp.Channel)
