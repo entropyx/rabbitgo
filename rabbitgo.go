@@ -182,5 +182,6 @@ func (c *Connection) pickChannel() *amqp.Channel {
 	if inf != nil {
 		return inf.(*amqp.Channel)
 	}
-	return nil
+	newChann, _ := c.conn.Channel()
+	return newChann
 }
