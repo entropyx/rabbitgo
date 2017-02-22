@@ -74,6 +74,7 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 		pc.Immediate, // immediate, if no consumer than err
 		*publishing,
 	)
+	p.conn.queue.Push(channel)
 	return err
 }
 

@@ -140,6 +140,7 @@ func (c *Consumer) consume() (*amqp.Channel, error) {
 	)
 	// should we stop streaming, in order not to consume from server?
 	c.deliveries = deliveries
+	//c.closeChannels()
 	return channel, err
 }
 
@@ -234,7 +235,6 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 		}
 		delivery.AckOrSkip(delivery.preAckMultiple)
 	}
-
 	log.Info("handle: deliveries channel closed")
 	c.done <- nil
 	return nil
@@ -296,8 +296,25 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 
 func (c *Consumer) Cancel(ch *amqp.Channel) {
 	err := ch.Cancel(c.cc.Tag, c.cc.NoWait)
+	fmt.Println("canceled")
 	if err != nil {
 		fmt.Println(err)
 	}
 	c.closed = true
+}
+
+func (c *Consumer) CloseChannels() {
+	fmt.Println("QUEUE LEN!!", c.conn.queue.Len())
+	if c.conn.queue.Len() >= 5000 {
+		c.conn.lock.Lock()
+		for i := c.conn.queue.Len(); i > 4000; i-- {
+			fmt.Println("CLOSING CHANNELS", c.conn.queue.Len())
+			ch := c.conn.queue.Poll().(*amqp.Channel)
+			err := ch.Close()
+			if err != nil {
+				fmt.Println("Failed to close a channel")
+			}
+		}
+		c.conn.lock.Unlock()
+	}
 }

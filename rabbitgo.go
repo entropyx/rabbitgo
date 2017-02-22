@@ -63,7 +63,7 @@ type Queue struct {
 func NewConnection(c *Config) (*Connection, error) {
 	conn := &Connection{config: c}
 	if conn.config.MinChannels <= 0 {
-		conn.config.MinChannels = 10
+		conn.config.MinChannels = 8000
 	}
 	conn.queue = lang.NewQueue()
 	if err := conn.Dial(); err != nil {
@@ -140,13 +140,6 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 	}()
 
 	go func() {
-		channel := c.pickChannel()
-		for e := range channel.NotifyClose(make(chan *amqp.Error)) {
-			fmt.Println(e)
-		}
-	}()
-
-	go func() {
 		for b := range conn.NotifyBlocked(make(chan amqp.Blocking)) {
 			if b.Active {
 				log.Info("TCP blocked: %q", b.Reason)
@@ -179,12 +172,15 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 }
 
 func (c *Connection) pickChannel() *amqp.Channel {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.queue.Len() == 0 {
-		c.lock.Lock()
 		newChann, _ := c.conn.Channel()
-		c.lock.Unlock()
 		return newChann
-	} else {
-		return c.queue.Poll().(*amqp.Channel)
 	}
+	inf := c.queue.Poll()
+	if inf != nil {
+		return inf.(*amqp.Channel)
+	}
+	return nil
 }
