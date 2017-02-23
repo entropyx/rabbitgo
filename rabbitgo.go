@@ -18,6 +18,7 @@ type Config struct {
 	Password    string
 	Vhost       string
 	MinChannels int
+	MaxChannels int
 }
 
 type Connection struct {
@@ -28,6 +29,7 @@ type Connection struct {
 	index  int
 	last   int
 	queue  *lang.Queue
+	usless *lang.Queue
 	lock   sync.Mutex
 }
 
@@ -63,9 +65,17 @@ type Queue struct {
 func NewConnection(c *Config) (*Connection, error) {
 	conn := &Connection{config: c}
 	if conn.config.MinChannels <= 0 {
-		conn.config.MinChannels = 8000
+		conn.config.MinChannels = 5000
 	}
-	conn.queue = lang.NewQueue()
+
+	if conn.config.MaxChannels <= 0 {
+		conn.config.MaxChannels = 10000
+	}
+
+	conn.queue =
+		lang.NewQueue()
+	conn.usless = lang.NewQueue()
+
 	if err := conn.Dial(); err != nil {
 		return nil, err
 	}

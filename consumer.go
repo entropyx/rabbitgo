@@ -140,7 +140,15 @@ func (c *Consumer) consume() (*amqp.Channel, error) {
 	)
 	// should we stop streaming, in order not to consume from server?
 	c.deliveries = deliveries
-	//c.closeChannels()
+	if check := c.limitChannels(); check == true {
+		fmt.Println("why is here!!!!!!!!")
+		go func() {
+			for c.conn.usless.Len() > 0 {
+				ch := c.conn.usless.Poll().(*amqp.Channel)
+				ch.Close()
+			}
+		}()
+	}
 	return channel, err
 }
 
@@ -303,18 +311,15 @@ func (c *Consumer) Cancel(ch *amqp.Channel) {
 	c.closed = true
 }
 
-func (c *Consumer) CloseChannels() {
-	fmt.Println("QUEUE LEN!!", c.conn.queue.Len())
-	if c.conn.queue.Len() >= 5000 {
-		c.conn.lock.Lock()
-		for i := c.conn.queue.Len(); i > 4000; i-- {
-			fmt.Println("CLOSING CHANNELS", c.conn.queue.Len())
+func (c *Consumer) limitChannels() bool {
+	c.conn.lock.Lock()
+	defer c.conn.lock.Unlock()
+	if c.conn.queue.Len() >= c.conn.config.MaxChannels {
+		for i := c.conn.queue.Len(); i >= c.conn.config.MinChannels; i-- {
 			ch := c.conn.queue.Poll().(*amqp.Channel)
-			err := ch.Close()
-			if err != nil {
-				fmt.Println("Failed to close a channel")
-			}
+			c.conn.usless.Push(ch)
 		}
-		c.conn.lock.Unlock()
+		return true
 	}
+	return false
 }
