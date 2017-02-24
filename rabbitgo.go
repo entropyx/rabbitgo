@@ -74,6 +74,7 @@ func NewConnection(c *Config) (*Connection, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.handleErrors(conn.conn)
 	conn.index = 0
 	conn.ch = ch
 	return conn, nil
@@ -100,7 +101,6 @@ func (c *Connection) Dial() error {
 	if err != nil {
 		return err
 	}
-	c.handleErrors(c.conn)
 	return nil
 }
 
@@ -140,6 +140,26 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			} else {
 				log.Info("TCP unblocked")
 			}
+		}
+	}()
+
+	go func() {
+		ch := c.ch
+		fmt.Println("ch", ch)
+		for conf := range ch.NotifyPublish(make(chan amqp.Confirmation)) {
+			fmt.Println("conf", conf)
+		}
+	}()
+
+	go func() {
+		ch := c.ch
+		fmt.Println("ch", ch)
+		ack, nack := ch.NotifyConfirm(make(chan uint64), make(chan uint64))
+		select {
+		case tag := <-ack:
+			fmt.Println("Acked ", tag)
+		case tag := <-nack:
+			fmt.Println("Nack alert! ", tag)
 		}
 	}()
 }
