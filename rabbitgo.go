@@ -101,12 +101,6 @@ func (c *Connection) Dial() error {
 		return err
 	}
 	c.handleErrors(c.conn)
-	for i := 0; i < c.config.MinChannels; i++ {
-		go func() {
-			ch, _ := c.conn.Channel()
-			c.queue.Push(ch)
-		}()
-	}
 	return nil
 }
 
@@ -172,16 +166,5 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 }
 
 func (c *Connection) pickChannel() *amqp.Channel {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.queue.Len() == 0 {
-		newChann, _ := c.conn.Channel()
-		return newChann
-	}
-	inf := c.queue.Poll()
-	if inf != nil {
-		return inf.(*amqp.Channel)
-	}
-	newChann, _ := c.conn.Channel()
-	return newChann
+	return c.ch
 }

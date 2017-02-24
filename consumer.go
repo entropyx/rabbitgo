@@ -76,8 +76,7 @@ func (c *Connection) newConsumer(e *Exchange, q *Queue, bc *BindingConfig, cc *C
 
 // connect internally declares the exchanges and queues
 func (c *Consumer) connect() error {
-	channel := c.conn.pickChannel()
-	defer c.conn.queue.Push(channel)
+	channel := c.conn.ch
 	_, err := channel.QueueDeclare(
 		c.q.Name,       // name of the queue
 		c.q.Durable,    // durable
@@ -127,8 +126,8 @@ func (c *Consumer) connect() error {
 	return nil
 }
 
-func (c *Consumer) consume() (*amqp.Channel, error) {
-	channel := c.conn.pickChannel()
+func (c *Consumer) consume() error {
+	channel := c.conn.ch
 	deliveries, err := channel.Consume(
 		c.q.Name,       // name
 		c.cc.Tag,       // consumerTag,
@@ -141,16 +140,14 @@ func (c *Consumer) consume() (*amqp.Channel, error) {
 	// should we stop streaming, in order not to consume from server?
 	c.deliveries = deliveries
 	//c.closeChannels()
-	return channel, err
+	return err
 }
 
 // Consume accepts a handler function for every message streamed from RabbitMq
 // will be called within this handler func
 func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	count := 0
-	ch, err := c.consume()
+	err := c.consume()
 	if err != nil {
 		return err
 	}
@@ -159,7 +156,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			time.Sleep(time.Duration(timeout) * time.Millisecond)
 			if c.closed == false {
 				log.Error(fmt.Sprintf("Timeout in %d ms", timeout))
-				c.Cancel(ch)
+				c.Cancel()
 			}
 		}
 	}()
@@ -172,10 +169,9 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		handler(delivery)
 		count++
 		if count >= c.cc.MaxDeliveries {
-			c.Cancel(ch)
+			c.Cancel()
 		}
 	}
-	c.conn.queue.Push(ch)
 	log.Info("handle: deliveries channel closed")
 	//This was blocking the flow. Not sure how needed is.
 	//c.done <- nil
@@ -186,9 +182,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 // will be called within this handler func.
 // It returns the message to send and the content type.
 func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	_, err := c.consume()
+	err := c.consume()
 	if err != nil {
 		return err
 	}
@@ -219,7 +213,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				Body:          response.Body,
 				CorrelationId: delivery.CorrelationId,
 			}
-			channel := c.conn.pickChannel()
+			channel := c.conn.ch
 			err := channel.Publish(
 				"",
 				replyTo,
@@ -227,8 +221,6 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				false,
 				*publishing,
 			)
-			fmt.Println("SE PUBLICOOOO!!", c.conn.queue.Len())
-			c.conn.queue.Push(channel)
 			if err != nil {
 				log.Error("Unable to reply back: " + err.Error())
 			}
@@ -244,18 +236,13 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 // consumers before receiving delivery acks.  The intent of Qos is to make sure
 // the network buffers stay full between the server and client.
 func (c *Consumer) QOS(messageCount int) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	channel := c.conn.pickChannel()
-	c.conn.queue.Push(channel)
+	channel := c.conn.ch
 	return channel.Qos(messageCount, 0, false)
 }
 
 // ConsumeMessage accepts a handler function and only consumes one message
 // stream from RabbitMq
 func (c *Consumer) Get(handler func(delivery *Delivery)) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	channel := c.conn.pickChannel()
 	m, ok, err := channel.Get(c.q.Name, c.cc.AutoAck)
 	message := &Delivery{&m, c, false, nil, nil, false}
@@ -269,7 +256,6 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	} else {
 		fmt.Println("No message received")
 	}
-	c.conn.queue.Push(channel)
 	// TODO maybe we should return ok too?
 	return nil
 }
@@ -294,8 +280,8 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	return nil
 }*/
 
-func (c *Consumer) Cancel(ch *amqp.Channel) {
-	err := ch.Cancel(c.cc.Tag, c.cc.NoWait)
+func (c *Consumer) Cancel() {
+	err := c.conn.ch.Cancel(c.cc.Tag, c.cc.NoWait)
 	fmt.Println("canceled")
 	if err != nil {
 		fmt.Println(err)
