@@ -193,39 +193,41 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for d := range c.deliveries {
-		delivery := &Delivery{&d, c, false, nil, nil, false}
-		replyTo := delivery.ReplyTo
-		handler(delivery)
-		if delivery.Delegated == true {
-			if err = delivery.AckError; err != nil {
-				log.Error("Unable to delegate an acknowledgement: " + err.Error())
+		go func(d *amqp.Delivery) {
+			delivery := &Delivery{d, c, false, nil, nil, false}
+			replyTo := delivery.ReplyTo
+			handler(delivery)
+			if delivery.Delegated == true {
+				if err = delivery.AckError; err != nil {
+					log.Error("Unable to delegate an acknowledgement: " + err.Error())
+				}
+				return
 			}
-			continue
-		}
-		response := delivery.Response
-		if response != nil {
-			if replyTo == "" {
-				log.Error("Response was ready, but received an empty routing key. Delivery was rejected.")
-				delivery.RejectOrSkip(false)
-				continue
+			response := delivery.Response
+			if response != nil {
+				if replyTo == "" {
+					log.Error("Response was ready, but received an empty routing key. Delivery was rejected.")
+					delivery.RejectOrSkip(false)
+					return
+				}
+				publishing := &amqp.Publishing{
+					Body:          response.Body,
+					CorrelationId: delivery.CorrelationId,
+				}
+				channel := c.conn.ch
+				err := channel.Publish(
+					"",
+					replyTo,
+					false,
+					false,
+					*publishing,
+				)
+				if err != nil {
+					log.Error("Unable to reply back: " + err.Error())
+				}
 			}
-			publishing := &amqp.Publishing{
-				Body:          response.Body,
-				CorrelationId: delivery.CorrelationId,
-			}
-			channel := c.conn.ch
-			err := channel.Publish(
-				"",
-				replyTo,
-				false,
-				false,
-				*publishing,
-			)
-			if err != nil {
-				log.Error("Unable to reply back: " + err.Error())
-			}
-		}
-		delivery.AckOrSkip(delivery.preAckMultiple)
+			delivery.AckOrSkip(delivery.preAckMultiple)
+		}(&d)
 	}
 	log.Info("handle: deliveries channel closed")
 	c.done <- nil
