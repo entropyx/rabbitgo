@@ -1,6 +1,7 @@
 package rabbitgo
 
 import (
+	"fmt"
 	"sync"
 	"time"
 	//"errors"
@@ -81,6 +82,7 @@ func (p *Producer) Publish(publishing *amqp.Publishing) error {
 // PublishRPC accepts a handler function for every message streamed from RabbitMq
 // as a reply after publishing a message.
 func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery *Delivery)) error {
+	fmt.Println("publishrpc")
 	maxDeliveries := p.pc.MaxDeliveries
 	if maxDeliveries <= 0 {
 		maxDeliveries = 1
@@ -103,6 +105,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	publishing.CorrelationId = randString
 	publishing.ReplyTo = queue.Name
 	err = p.Publish(publishing)
+	fmt.Println("publishing mdf", publishing)
 	if err != nil {
 		return err
 	}

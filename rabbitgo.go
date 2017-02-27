@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hishboy/gocommons/lang"
 	log "github.com/koding/logging"
@@ -27,10 +28,10 @@ type Connection struct {
 	config *Config
 	ready  []bool
 	index  int
-	last   int
 	queue  *lang.Queue
 	usless *lang.Queue
 	lock   sync.Mutex
+	last   *time.Time
 }
 
 type Exchange struct {
@@ -182,6 +183,20 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 }
 
 func (c *Connection) pickChannel() *amqp.Channel {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.queue.Len() == 0 {
+		newChann, _ := c.conn.Channel()
+		return newChann
+	}
+	inf := c.queue.Poll()
+	if inf != nil {
+		return inf.(*amqp.Channel)
+	}
+	newChann, _ := c.conn.Channel()
+	return newChann
+}
+func (c *Connection) PickChannel() *amqp.Channel {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.queue.Len() == 0 {
