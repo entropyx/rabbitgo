@@ -217,8 +217,6 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				return
 			}
 			response := delivery.Response
-			fmt.Println("delivery.Response", delivery.Response)
-			fmt.Println("delivery.CorrelationId", delivery.CorrelationId)
 			if response != nil {
 				if replyTo == "" {
 					log.Error("Response was ready, but received an empty routing key. Delivery was rejected.")
@@ -306,7 +304,6 @@ func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 
 func (c *Consumer) Cancel(ch *amqp.Channel) {
 	err := ch.Cancel(c.cc.Tag, c.cc.NoWait)
-	fmt.Println("canceled")
 	if err != nil {
 		fmt.Println(err)
 	}
