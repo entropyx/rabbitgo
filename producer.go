@@ -89,12 +89,18 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	queue := &Queue{
 		Name:       "queue_" + randString,
 		AutoDelete: true,
-		Exclusive:  true,
+		Exclusive:  false,
+		Durable:    false,
+		NoWait:     true,
 	}
 	consumerConfig := &ConsumerConfig{
 		Tag:           "consumer_" + randString,
 		Timeout:       p.pc.Timeout,
 		MaxDeliveries: maxDeliveries,
+		AutoAck:       false,
+		Exclusive:     false,
+		NoLocal:       false,
+		NoWait:        true,
 	}
 	consumer, err := p.conn.newConsumer(nil, queue, nil, consumerConfig)
 	if err != nil {
@@ -102,6 +108,9 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 	}
 	publishing.CorrelationId = randString
 	publishing.ReplyTo = queue.Name
+	publishing.DeliveryMode = amqp.Transient
+	publishing.Priority = 9
+
 	err = p.Publish(publishing)
 	if err != nil {
 		return err
