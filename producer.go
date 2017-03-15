@@ -91,7 +91,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		AutoDelete: true,
 		Exclusive:  false,
 		Durable:    false,
-		NoWait:     true,
+		//NoWait:     true,
 	}
 	consumerConfig := &ConsumerConfig{
 		Tag:           "consumer_" + randString,
