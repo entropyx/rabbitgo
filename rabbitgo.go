@@ -1,25 +1,26 @@
 package rabbitgo
 
 import (
-  "fmt"
-  "errors"
-  "strings"
-  "github.com/streadway/amqp"
-  log "github.com/koding/logging"
+	"errors"
+	"fmt"
+	"strings"
+
+	log "github.com/koding/logging"
+	"github.com/streadway/amqp"
 )
 
 type Config struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	Vhost     string
+	Host     string
+	Port     int
+	Username string
+	Password string
+	Vhost    string
 }
 
 type Connection struct {
-  conn    *amqp.Connection
-  ch      *amqp.Channel       //TODO: Should we use the same channel?
-  config  *Config
+	conn   *amqp.Connection
+	ch     *amqp.Channel //TODO: Should we use the same channel?
+	config *Config
 }
 
 type Exchange struct {
@@ -43,29 +44,34 @@ type Exchange struct {
 }
 
 type Queue struct {
-	Name string
-	Durable bool
+	Name       string
+	Durable    bool
 	AutoDelete bool
-	Exclusive bool
-	NoWait bool
-	Args amqp.Table
+	Exclusive  bool
+	NoWait     bool
+	Args       amqp.Table
 }
 
 func NewConnection(c *Config) (*Connection, error) {
-  conn := &Connection{config: c}
-  if err := conn.Dial(); err != nil {
-    return nil, err
-  }
-  ch, err := conn.conn.Channel()
-  if err != nil {
-    return nil, err
-  }
-  conn.ch = ch
-  return conn, nil
+	conn := &Connection{config: c}
+	if err := conn.Dial(); err != nil {
+		return nil, err
+	}
+	ch, err := conn.conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+	conn.ch = ch
+	return conn, nil
+}
+
+//ExchangeDeclare declares an exchange on the server.
+func (c *Connection) ExchangeDeclare(exchange *Exchange) error {
+	return c.ch.ExchangeDeclare(exchange.Name, exchange.Type, exchange.Durable, exchange.AutoDelete, exchange.Internal, exchange.NoWait, exchange.Args)
 }
 
 func (c *Connection) Publish(exchange, key string, mandatory, immediate bool, msg *amqp.Publishing) error {
-  return c.ch.Publish(exchange, key, mandatory, immediate, *msg)
+	return c.ch.Publish(exchange, key, mandatory, immediate, *msg)
 }
 
 func (c *Connection) Dial() error {
@@ -90,8 +96,8 @@ func (c *Connection) Dial() error {
 }
 
 func (c *Connection) Close() {
-  c.conn.Close()
-  c.ch.Close()
+	c.conn.Close()
+	c.ch.Close()
 }
 
 func (c *Connection) handleErrors(conn *amqp.Connection) {
@@ -139,11 +145,11 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 	}
 
 	if err := channel.Close(); err != nil {
-    fmt.Printf("err %s", err)
+		fmt.Printf("err %s", err)
 		return err
 	}
 
-  fmt.Println("shutdown")
+	fmt.Println("shutdown")
 
 	return nil
 }
