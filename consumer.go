@@ -161,6 +161,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			var tickerCount uint
 			defer ticker.Stop()
 			select {
+			case <-c.done:
+				return
 			case <-ticker.C:
 				tickerCount = tickerCount + 1
 				if tickerCount*100 >= uint(timeout) {
