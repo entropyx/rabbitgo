@@ -32,7 +32,7 @@ type ConsumerConfig struct {
 	PrefetchCount int
 	PrefetchSize  int
 	MaxDeliveries int
-	Timeout       int
+	Timeout       time.Duration
 	AutoAck       bool
 	Exclusive     bool
 	NoLocal       bool
@@ -69,6 +69,7 @@ func (c *Connection) newConsumerFromChannel(e *Exchange, q *Queue, bc *BindingCo
 		conn: c,
 		ch:   ch,
 		done: make(chan bool),
+		err:  make(chan error),
 		cc:   cc,
 		bc:   bc,
 		e:    e,
@@ -157,17 +158,20 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 
 	go func() {
 		if timeout := c.cc.Timeout; timeout > 0 {
-			ticker := time.NewTicker(100 * time.Millisecond)
-			var tickerCount uint
+			div := 100 * time.Millisecond
+			ticker := time.NewTicker(div)
+			var tickerCount time.Duration
 			defer ticker.Stop()
-			select {
-			case <-c.done:
-				return
-			case <-ticker.C:
-				tickerCount = tickerCount + 1
-				if tickerCount*100 >= uint(timeout) {
-					c.err <- errors.New(fmt.Sprintf("%s timeout", time.Duration(timeout)*time.Millisecond))
+			for {
+				select {
+				case <-c.done:
 					return
+				case <-ticker.C:
+					tickerCount = tickerCount + div
+					if tickerCount >= timeout {
+						c.err <- errors.New(fmt.Sprintf("%s timeout", time.Duration(timeout)*time.Millisecond))
+						return
+					}
 				}
 			}
 		}
@@ -177,17 +181,19 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 	defer log.Info("handle: deliveries channel closed")
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
-	select {
-	case c.err <- err:
-		c.Shutdown()
-		return err
-	case d := <-c.deliveries:
-		delivery := &Delivery{&d, c, false, nil, nil, false}
-		handler(delivery)
-		count++
-		if c.cc.MaxDeliveries > 0 && count >= c.cc.MaxDeliveries {
-			c.done <- true
-			return nil
+	for {
+		select {
+		case <-c.err:
+			c.Shutdown()
+			return err
+		case d := <-c.deliveries:
+			delivery := &Delivery{&d, c, false, nil, nil, false}
+			handler(delivery)
+			count++
+			if c.cc.MaxDeliveries > 0 && count >= c.cc.MaxDeliveries {
+				c.done <- true
+				return nil
+			}
 		}
 	}
 	//This was blocking the flow. Not sure how needed is.
