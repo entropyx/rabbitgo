@@ -183,7 +183,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 	// there are problems with reconnection logic for now
 	for {
 		select {
-		case <-c.err:
+		case err := <-c.err:
 			c.Shutdown()
 			return err
 		case d := <-c.deliveries:
