@@ -2,7 +2,7 @@ package rabbitgo
 
 import (
 	//"errors"
-	"errors"
+
 	"fmt"
 	"time"
 
@@ -169,7 +169,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 				case <-ticker.C:
 					tickerCount = tickerCount + div
 					if tickerCount >= timeout {
-						c.err <- errors.New(fmt.Sprintf("%s timeout", time.Duration(timeout)*time.Millisecond))
+						c.err <- ErrorTimeout{Timeout: timeout}
 						return
 					}
 				}
