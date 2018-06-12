@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	log "github.com/koding/logging"
+	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
 
@@ -165,6 +165,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			for {
 				select {
 				case <-c.done:
+					c.Shutdown()
 					return
 				case <-ticker.C:
 					tickerCount = tickerCount + div
@@ -177,8 +178,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		}
 	}()
 	c.handler = handler
-	log.Info("handle: deliveries channel starting")
-	defer log.Info("handle: deliveries channel closed")
+	log.Info("Deliveries channel starting")
+	defer log.Info("Deliveries channel closed")
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for {
@@ -211,7 +212,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 	}
 	c.handlerRPC = handler
 
-	log.Info("handle: deliveries channel starting")
+	log.Info("Deliveries channel starting")
 
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
@@ -250,7 +251,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 		delivery.AckOrSkip(delivery.preAckMultiple)
 	}
 
-	log.Info("handle: deliveries channel closed")
+	log.Info("Deliveries channel closed")
 	return nil
 }
 
@@ -285,14 +286,13 @@ func (c *Consumer) Shutdown() error {
 	if err := shutdownChannel(c.ch, co.Tag); err != nil {
 		return err
 	}
-	fmt.Println("Waiting for Consumer handler to exit")
 	// if we have not called the Consume yet, we can return here
 	if c.deliveries == nil {
 		close(c.done)
 	}
-	fmt.Printf("deliveries %v", c.deliveries)
+	close(c.err)
 	c.closed = true
-	fmt.Println("Consumer shutdown OK")
+	log.Info("Consumer was successfully shut down")
 	// this channel is here for finishing the consumer's ranges of
 	// delivery chans.  We need every delivery to be processed, here make
 	// sure to wait for all consumers goroutines to finish before exiting our
