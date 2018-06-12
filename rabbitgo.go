@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	log "github.com/koding/logging"
+	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
 
@@ -50,6 +50,14 @@ type Queue struct {
 	Exclusive  bool
 	NoWait     bool
 	Args       amqp.Table
+}
+
+func init() {
+	formatter := &log.TextFormatter{
+		FullTimestamp: true,
+		ForceColors:   true,
+	}
+	log.SetFormatter(formatter)
 }
 
 func NewConnection(c *Config) (*Connection, error) {
@@ -148,8 +156,6 @@ func shutdownChannel(channel *amqp.Channel, tag string) error {
 		fmt.Printf("err %s", err)
 		return err
 	}
-
-	fmt.Println("shutdown")
 
 	return nil
 }
