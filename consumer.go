@@ -178,8 +178,8 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 		}
 	}()
 	c.handler = handler
-	log.Info("Deliveries channel starting")
-	defer log.Info("Deliveries channel closed")
+	log.Debug("Deliveries channel starting")
+	defer log.Debug("Deliveries channel closed")
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for {
@@ -188,7 +188,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 			c.Shutdown()
 			return err
 		case d := <-c.deliveries:
-			delivery := &Delivery{&d, c, false, nil, nil, false}
+			delivery := &Delivery{d, c, false, nil, nil, false}
 			handler(delivery)
 			count++
 			if c.cc.MaxDeliveries > 0 && count >= c.cc.MaxDeliveries {
@@ -212,12 +212,12 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 	}
 	c.handlerRPC = handler
 
-	log.Info("Deliveries channel starting")
+	log.Debug("Deliveries channel starting")
 
 	// handle all consumer errors, if required re-connect
 	// there are problems with reconnection logic for now
 	for d := range c.deliveries {
-		delivery := &Delivery{&d, c, false, nil, nil, false}
+		delivery := &Delivery{d, c, false, nil, nil, false}
 		replyTo := delivery.ReplyTo
 		handler(delivery)
 		if delivery.Delegated == true {
@@ -251,7 +251,7 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 		delivery.AckOrSkip(delivery.preAckMultiple)
 	}
 
-	log.Info("Deliveries channel closed")
+	log.Debug("Deliveries channel closed")
 	return nil
 }
 
@@ -266,7 +266,7 @@ func (c *Consumer) QOS(messageCount int) error {
 // stream from RabbitMq
 func (c *Consumer) Get(handler func(delivery *Delivery)) error {
 	m, ok, err := c.ch.Get(c.q.Name, c.cc.AutoAck)
-	message := &Delivery{&m, c, false, nil, nil, false}
+	message := &Delivery{m, c, false, nil, nil, false}
 	if err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ func (c *Consumer) Shutdown() error {
 	}
 	close(c.err)
 	c.closed = true
-	log.Info("Consumer was successfully shut down")
+	log.Debug("Consumer was successfully shut down")
 	// this channel is here for finishing the consumer's ranges of
 	// delivery chans.  We need every delivery to be processed, here make
 	// sure to wait for all consumers goroutines to finish before exiting our

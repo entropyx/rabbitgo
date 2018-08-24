@@ -133,9 +133,9 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 	go func() {
 		for b := range conn.NotifyBlocked(make(chan amqp.Blocking)) {
 			if b.Active {
-				log.Info("TCP blocked: %q", b.Reason)
+				log.Debug("TCP blocked: %q", b.Reason)
 			} else {
-				log.Info("TCP unblocked")
+				log.Debug("TCP unblocked")
 			}
 		}
 	}()
