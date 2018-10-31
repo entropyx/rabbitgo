@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
@@ -114,7 +115,9 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			// if the computer sleeps then wakes longer than a heartbeat interval,
 			// the connection will be closed by the client.
 			// https://github.com/streadway/amqp/issues/82
-			log.Fatal(amqpErr.Error())
+			log.Error(amqpErr.Error())
+			time.Sleep(time.Second * 5)
+			c.Dial()
 			if strings.Contains(amqpErr.Error(), "NOT_FOUND") {
 				// do not continue
 			}
