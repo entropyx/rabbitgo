@@ -21,6 +21,7 @@ type Connection struct {
 	conn   *amqp.Connection
 	ch     *amqp.Channel //TODO: Should we use the same channel?
 	config *Config
+	err    chan error
 }
 
 type Exchange struct {
@@ -114,7 +115,7 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			// if the computer sleeps then wakes longer than a heartbeat interval,
 			// the connection will be closed by the client.
 			// https://github.com/streadway/amqp/issues/82
-			log.Fatal(amqpErr.Error())
+			// log.Fatal(amqpErr.Error())
 			if strings.Contains(amqpErr.Error(), "NOT_FOUND") {
 				// do not continue
 			}
@@ -122,7 +123,8 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 			// CRITICAL Exception (501) Reason: "read tcp 127.0.0.1:5672: i/o timeout"
 			// CRITICAL Exception (503) Reason: "COMMAND_INVALID - unimplemented method"
 			if amqpErr.Code == 501 {
-				// reconnect
+				NewConnection(c.config)
+				c.err <- errors.New(amqpErr.Error())
 			}
 			if amqpErr.Code == 320 {
 				// fmt.Println("tryin to reconnect")

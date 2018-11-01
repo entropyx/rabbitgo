@@ -206,6 +206,14 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 // will be called within this handler func.
 // It returns the message to send and the content type.
 func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
+	go func() {
+		for {
+			if err := c.conn.err; err != nil {
+				c.connect()
+			}
+		}
+	}()
+
 	err := c.consume()
 	if err != nil {
 		return err
