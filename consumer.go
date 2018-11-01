@@ -208,7 +208,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 	go func() {
 		for {
-			if err := c.conn.err; err != nil {
+			if err := <-c.conn.err; err != nil {
 				c.connect()
 			}
 		}
