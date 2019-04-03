@@ -248,7 +248,6 @@ func (c *Consumer) ConsumeRPC(handler func(delivery *Delivery)) error {
 				log.Error("Unable to reply back: " + err.Error())
 			}
 		}
-		delivery.AckOrSkip(delivery.preAckMultiple)
 	}
 
 	log.Debug("Deliveries channel closed")
