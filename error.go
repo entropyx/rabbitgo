@@ -7,8 +7,9 @@ import (
 
 type ErrorTimeout struct {
 	Timeout time.Duration
+	Queue   string
 }
 
 func (e ErrorTimeout) Error() string {
-	return fmt.Sprintf("%s timeout", e.Timeout)
+	return fmt.Sprintf("%s timeout (%s)", e.Timeout, e.Queue)
 }
