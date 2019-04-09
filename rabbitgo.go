@@ -103,9 +103,8 @@ func (c *Connection) Dial() error {
 	return nil
 }
 
-func (c *Connection) Close() {
-	c.conn.Close()
-	c.ch.Close()
+func (c *Connection) Close() error {
+	return c.conn.Close()
 }
 
 func (c *Connection) handleErrors(conn *amqp.Connection) {
