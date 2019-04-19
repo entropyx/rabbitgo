@@ -22,6 +22,7 @@ type Connection struct {
 	ch          *amqp.Channel //TODO: Should we use the same channel?
 	config      *Config
 	IsConnected bool
+	IsBlocked   bool
 }
 
 type Exchange struct {
@@ -136,10 +137,12 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 	go func() {
 		for b := range conn.NotifyBlocked(make(chan amqp.Blocking)) {
 			if b.Active {
-				log.Debug("TCP blocked: %q", b.Reason)
-			} else {
-				log.Debug("TCP unblocked")
+				log.Error("TCP blocked: %q", b.Reason)
+				c.IsBlocked = true
+				continue
 			}
+			log.Info("TCP unblocked")
+			c.IsBlocked = false
 		}
 	}()
 }
