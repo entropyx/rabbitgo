@@ -18,9 +18,10 @@ type Config struct {
 }
 
 type Connection struct {
-	conn   *amqp.Connection
-	ch     *amqp.Channel //TODO: Should we use the same channel?
-	config *Config
+	conn        *amqp.Connection
+	ch          *amqp.Channel //TODO: Should we use the same channel?
+	config      *Config
+	IsConnected bool
 }
 
 type Exchange struct {
@@ -99,6 +100,7 @@ func (c *Connection) Dial() error {
 	if err != nil {
 		return err
 	}
+	c.IsConnected = true
 	c.handleErrors(c.conn)
 	return nil
 }
@@ -128,6 +130,8 @@ func (c *Connection) handleErrors(conn *amqp.Connection) {
 				// c.reconnect()
 			}
 		}
+		log.Error("Disconnected")
+		c.IsConnected = false
 	}()
 	go func() {
 		for b := range conn.NotifyBlocked(make(chan amqp.Blocking)) {
