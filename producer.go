@@ -1,6 +1,7 @@
 package rabbitgo
 
 import (
+	"fmt"
 	"time"
 	//"errors"
 	"github.com/entropyx/rabbitgo/utils"
@@ -94,7 +95,7 @@ func (p *Producer) PublishRPC(publishing *amqp.Publishing, handler func(delivery
 		Exclusive:  true,
 	}
 	consumerConfig := &ConsumerConfig{
-		Tag:           "consumer_" + randString,
+		Tag:           fmt.Sprintf("queue_%s_%s", p.pc.RoutingKey, randString),
 		Timeout:       p.pc.Timeout,
 		MaxDeliveries: maxDeliveries,
 	}

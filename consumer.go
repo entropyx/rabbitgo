@@ -170,7 +170,7 @@ func (c *Consumer) Consume(handler func(delivery *Delivery)) error {
 				case <-ticker.C:
 					tickerCount = tickerCount + div
 					if tickerCount >= timeout {
-						c.err <- ErrorTimeout{Timeout: timeout, Queue: c.q.Name}
+						c.err <- ErrorTimeout{Timeout: timeout, Queue: c.cc.Tag}
 						return
 					}
 				}
